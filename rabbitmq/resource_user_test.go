@@ -168,6 +168,35 @@ func TestAccUser_passwordWO(t *testing.T) {
 	})
 }
 
+func TestAccUser_passwordWO_rotate(t *testing.T) {
+	var user string
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_passwordWO_v1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "wo-secret-one"),
+				),
+			},
+			{
+				// Bumping password_wo_version is what makes Terraform plan an update at
+				// all; UpdateUser then sends whatever password_wo currently holds.
+				Config: testAccUserConfig_passwordWO_v2,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "wo-secret-two"),
+					testAccUserCannotConnect("mctest", "wo-secret-one"),
+					resource.TestCheckResourceAttr("rabbitmq_user.test", "password_wo_version", "2"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccUser_emptyPasswordRejected(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:  func() { testAccPreCheck(t) },
@@ -223,6 +252,25 @@ func testAccUserConnect(username, password string) resource.TestCheckFunc {
 		_, err = client.Whoami()
 		if err != nil {
 			return fmt.Errorf("could not call whoami with username %s: %v", username, err)
+		}
+		return nil
+	}
+}
+
+// testAccUserCannotConnect asserts that the given credentials are rejected.
+//
+// It treats any Whoami() error as an authentication failure and so cannot distinguish
+// "wrong password" from "broker unreachable". Pair it with a preceding successful
+// testAccUserConnect check in the same step, so an unreachable broker fails there first.
+func testAccUserCannotConnect(username, password string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client, err := rabbithole.NewClient("http://localhost:15672", username, password)
+		if err != nil {
+			return fmt.Errorf("could not create rmq client: %v", err)
+		}
+
+		if _, err = client.Whoami(); err == nil {
+			return fmt.Errorf("expected authentication to fail for user %s, but it succeeded", username)
 		}
 		return nil
 	}
@@ -343,6 +391,14 @@ resource "rabbitmq_user" "test" {
     name                = "mctest"
     password_wo         = "wo-secret-one"
     password_wo_version = 1
+    tags                = ["management"]
+}`
+
+const testAccUserConfig_passwordWO_v2 = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password_wo         = "wo-secret-two"
+    password_wo_version = 2
     tags                = ["management"]
 }`
 

@@ -125,7 +125,15 @@ func UpdateUser(d *schema.ResourceData, meta any) error {
 
 	name := d.Id()
 	tags := userTagsToString(d)
-	password := d.Get("password").(string)
+
+	// The password is sent on every update, including one that only changes tags.
+	// PUT /api/users replaces the whole user, and UserSettings.Password is `omitempty`,
+	// so an empty value here omits the field and RabbitMQ resets password_hash to "" --
+	// wiping the password and locking the user out, while still returning success.
+	password, err := userPassword(d)
+	if err != nil {
+		return err
+	}
 
 	userSettings := rabbithole.UserSettings{
 		Password: password,

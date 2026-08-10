@@ -191,6 +191,14 @@ func userPassword(d *schema.ResourceData) (string, error) {
 		}
 	}
 
+	// UserSettings.Password is `omitempty`, so an empty value is dropped from the
+	// request body. RabbitMQ does not reject that: it stores an unusable password
+	// hash on create, and wipes an existing password on update, in both cases
+	// reporting success. Fail loudly rather than silently locking the user out.
+	if password == "" {
+		return "", fmt.Errorf("password must not be empty")
+	}
+
 	return password, nil
 }
 

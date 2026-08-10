@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole/v3"
@@ -167,6 +168,23 @@ func TestAccUser_passwordWO(t *testing.T) {
 	})
 }
 
+func TestAccUser_emptyPasswordRejected(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:  func() { testAccPreCheck(t) },
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccUserConfig_emptyPassword,
+				ExpectError: regexp.MustCompile("password must not be empty"),
+			},
+			{
+				Config:      testAccUserConfig_emptyPasswordWO,
+				ExpectError: regexp.MustCompile("password must not be empty"),
+			},
+		},
+	})
+}
+
 func testAccUserCheck(rn string, name *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
@@ -324,6 +342,21 @@ const testAccUserConfig_passwordWO_v1 = `
 resource "rabbitmq_user" "test" {
     name                = "mctest"
     password_wo         = "wo-secret-one"
+    password_wo_version = 1
+    tags                = ["management"]
+}`
+
+const testAccUserConfig_emptyPassword = `
+resource "rabbitmq_user" "test" {
+    name     = "mctest"
+    password = ""
+    tags     = ["management"]
+}`
+
+const testAccUserConfig_emptyPasswordWO = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password_wo         = ""
     password_wo_version = 1
     tags                = ["management"]
 }`

@@ -541,6 +541,36 @@ func TestAccUser_passwordWO_tagsOnlyUpdate(t *testing.T) {
 	})
 }
 
+func TestAccUser_passwordToPasswordWO(t *testing.T) {
+	var user string
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
+		Steps: []resource.TestStep{
+			{
+				Config: testUpdateTagsCreate,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "foobar"),
+					resource.TestCheckResourceAttr("rabbitmq_user.test", "password", "foobar"),
+				),
+			},
+			{
+				// Dropping password and adding password_wo + password_wo_version both
+				// produce diffs, so one update converges: userPassword prefers password_wo.
+				Config: testAccUserConfig_passwordWO_v1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserConnect("mctest", "wo-secret-one"),
+					testAccUserCannotConnect("mctest", "foobar"),
+					resource.TestCheckResourceAttr("rabbitmq_user.test", "password", ""),
+					resource.TestCheckResourceAttr("rabbitmq_user.test", "password_wo_version", "1"),
+				),
+			},
+		},
+	})
+}
+
 const testAccUserConfig_passwordWO_v1_changedSecret = `
 resource "rabbitmq_user" "test" {
     name                = "mctest"

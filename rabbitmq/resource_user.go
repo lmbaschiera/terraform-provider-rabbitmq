@@ -6,6 +6,7 @@ import (
 
 	rabbithole "github.com/michaelklishin/rabbit-hole/v3"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -65,8 +66,13 @@ func CreateUser(d *schema.ResourceData, meta any) error {
 
 	name := d.Get("name").(string)
 
+	password, err := userPassword(d)
+	if err != nil {
+		return err
+	}
+
 	userSettings := rabbithole.UserSettings{
-		Password: d.Get("password").(string),
+		Password: password,
 		Tags:     userTagsToString(d),
 	}
 
@@ -163,6 +169,29 @@ func DeleteUser(d *schema.ResourceData, meta any) error {
 	}
 
 	return nil
+}
+
+// userPassword resolves the password to send to RabbitMQ. The schema's ExactlyOneOf
+// guarantees that exactly one of password and password_wo is set in configuration --
+// but "set" includes an explicit empty string, so the resolved value is checked below.
+//
+// password_wo is a write-only attribute, so it is never persisted to state and
+// d.Get("password_wo") always returns the zero value. It has to be read back out of
+// the raw configuration instead.
+func userPassword(d *schema.ResourceData) (string, error) {
+	password := d.Get("password").(string)
+
+	if !d.GetRawConfig().IsNull() {
+		v, diags := d.GetRawConfigAt(cty.GetAttrPath("password_wo"))
+		if diags.HasError() {
+			return "", fmt.Errorf("error reading password_wo from configuration: %s: %s", diags[0].Summary, diags[0].Detail)
+		}
+		if v.IsKnown() && !v.IsNull() {
+			password = v.AsString()
+		}
+	}
+
+	return password, nil
 }
 
 func userTagsToString(d *schema.ResourceData) rabbithole.UserTags {

@@ -146,6 +146,27 @@ func TestAccUser_passwordChange(t *testing.T) {
 	})
 }
 
+func TestAccUser_passwordWO(t *testing.T) {
+	var user string
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_passwordWO_v1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "wo-secret-one"),
+					// The entire point of the feature: the secret must not reach state.
+					resource.TestCheckNoResourceAttr("rabbitmq_user.test", "password_wo"),
+					resource.TestCheckResourceAttr("rabbitmq_user.test", "password_wo_version", "1"),
+				),
+			},
+		},
+	})
+}
+
 func testAccUserCheck(rn string, name *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
@@ -297,6 +318,14 @@ resource "rabbitmq_user" "test" {
     name = "mctest"
     password = "foobarry"
     tags = ["administrator", "management"]
+}`
+
+const testAccUserConfig_passwordWO_v1 = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password_wo         = "wo-secret-one"
+    password_wo_version = 1
+    tags                = ["management"]
 }`
 
 // --- unit tests (no broker required) ---

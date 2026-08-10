@@ -472,3 +472,87 @@ func TestResourceUserPasswordSchema(t *testing.T) {
 		t.Errorf("password_wo_version: expected TypeInt, got %s", s["password_wo_version"].Type)
 	}
 }
+
+func TestAccUser_passwordWO_versionUnchanged(t *testing.T) {
+	var user string
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_passwordWO_v1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "wo-secret-one"),
+				),
+			},
+			{
+				// password_wo changes but password_wo_version does not. Because write-only
+				// values are absent from state, Terraform computes no diff and never calls
+				// Update, so the password is deliberately NOT rotated. This is the
+				// documented contract, not a bug -- the docs tell users to bump the version.
+				//
+				// Note this step pins Terraform's behaviour rather than the provider's:
+				// UpdateUser is never reached, so no change to it can make this step fail.
+				// Its value is documenting the contract, and catching a future CustomizeDiff
+				// that started forcing updates on password_wo alone.
+				Config: testAccUserConfig_passwordWO_v1_changedSecret,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserConnect("mctest", "wo-secret-one"),
+					testAccUserCannotConnect("mctest", "wo-secret-ignored"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUser_passwordWO_tagsOnlyUpdate(t *testing.T) {
+	var user string
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_passwordWO_v1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheck("rabbitmq_user.test", &user),
+					testAccUserConnect("mctest", "wo-secret-one"),
+				),
+			},
+			{
+				// Only tags change, so password_wo_version is unchanged. UpdateUser must
+				// STILL send the password: PUT /api/users replaces the whole user, and
+				// omitting the password resets password_hash to "" -- RabbitMQ reports
+				// success and the account can no longer authenticate.
+				//
+				// This is the ONLY test that catches that regression. Gating the password
+				// on d.HasChange("password_wo_version") leaves TestAccUser_passwordWO_rotate
+				// passing, because bumping the version is that test's own trigger. Do not
+				// delete this as redundant.
+				Config: testAccUserConfig_passwordWO_v1_otherTags,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserCheckTagCount(&user, 1),
+					testAccUserConnect("mctest", "wo-secret-one"),
+				),
+			},
+		},
+	})
+}
+
+const testAccUserConfig_passwordWO_v1_changedSecret = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password_wo         = "wo-secret-ignored"
+    password_wo_version = 1
+    tags                = ["management"]
+}`
+
+const testAccUserConfig_passwordWO_v1_otherTags = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password_wo         = "wo-secret-one"
+    password_wo_version = 1
+    tags                = ["monitoring"]
+}`

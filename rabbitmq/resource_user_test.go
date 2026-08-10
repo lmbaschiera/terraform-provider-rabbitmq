@@ -2,11 +2,13 @@ package rabbitmq
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole/v3"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
@@ -296,3 +298,59 @@ resource "rabbitmq_user" "test" {
     password = "foobarry"
     tags = ["administrator", "management"]
 }`
+
+// --- unit tests (no broker required) ---
+
+func TestResourceUserPasswordSchema(t *testing.T) {
+	s := resourceUser().Schema
+
+	for _, k := range []string{"password", "password_wo", "password_wo_version"} {
+		if s[k] == nil {
+			t.Fatalf("schema is missing %s", k)
+		}
+	}
+
+	// Without WriteOnly the plaintext password is persisted to state, which defeats
+	// the entire purpose of the attribute.
+	if !s["password_wo"].WriteOnly {
+		t.Error("password_wo must have WriteOnly set")
+	}
+
+	if !s["password_wo"].Sensitive {
+		t.Error("password_wo must have Sensitive set")
+	}
+
+	// password can no longer be Required, because ExactlyOneOf is invalid alongside
+	// Required. ExactlyOneOf preserves the guarantee that Required:true used to give.
+	if s["password"].Required {
+		t.Error("password must be Optional, not Required")
+	}
+
+	if !s["password"].Optional {
+		t.Error("password must be Optional")
+	}
+
+	if !s["password"].Sensitive {
+		t.Error("password must have Sensitive set")
+	}
+
+	wantExactlyOneOf := []string{"password", "password_wo"}
+	for _, k := range wantExactlyOneOf {
+		if !reflect.DeepEqual(s[k].ExactlyOneOf, wantExactlyOneOf) {
+			t.Errorf("%s: expected ExactlyOneOf %v, got %v", k, wantExactlyOneOf, s[k].ExactlyOneOf)
+		}
+	}
+
+	// password_wo and password_wo_version are all-or-nothing.
+	if !reflect.DeepEqual(s["password_wo"].RequiredWith, []string{"password_wo_version"}) {
+		t.Errorf("password_wo: expected RequiredWith [password_wo_version], got %v", s["password_wo"].RequiredWith)
+	}
+
+	if !reflect.DeepEqual(s["password_wo_version"].RequiredWith, []string{"password_wo"}) {
+		t.Errorf("password_wo_version: expected RequiredWith [password_wo], got %v", s["password_wo_version"].RequiredWith)
+	}
+
+	if s["password_wo_version"].Type != schema.TypeInt {
+		t.Errorf("password_wo_version: expected TypeInt, got %s", s["password_wo_version"].Type)
+	}
+}

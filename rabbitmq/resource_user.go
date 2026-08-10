@@ -27,9 +27,28 @@ func resourceUser() *schema.Resource {
 			},
 
 			"password": {
-				Type:      schema.TypeString,
-				Required:  true,
-				Sensitive: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				ExactlyOneOf: []string{"password", "password_wo"},
+			},
+
+			"password_wo": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				WriteOnly:    true,
+				ExactlyOneOf: []string{"password", "password_wo"},
+				RequiredWith: []string{"password_wo_version"},
+			},
+
+			// password_wo is never stored in state, so Terraform can never detect a
+			// change to it. Changing password_wo_version is what produces a diff and
+			// therefore what triggers a password rotation.
+			"password_wo_version": {
+				Type:         schema.TypeInt,
+				Optional:     true,
+				RequiredWith: []string{"password_wo"},
 			},
 
 			"tags": {

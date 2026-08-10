@@ -571,6 +571,49 @@ func TestAccUser_passwordToPasswordWO(t *testing.T) {
 	})
 }
 
+func TestAccUser_passwordValidation(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:  func() { testAccPreCheck(t) },
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccUserConfig_noPassword,
+				ExpectError: regexp.MustCompile("one of `password,password_wo` must be specified"),
+			},
+			{
+				Config:      testAccUserConfig_bothPasswords,
+				ExpectError: regexp.MustCompile("only one of `password,password_wo` can be specified"),
+			},
+			{
+				Config:      testAccUserConfig_passwordWO_noVersion,
+				ExpectError: regexp.MustCompile("all of `password_wo,password_wo_version` must be specified"),
+			},
+		},
+	})
+}
+
+const testAccUserConfig_noPassword = `
+resource "rabbitmq_user" "test" {
+    name = "mctest"
+    tags = ["management"]
+}`
+
+const testAccUserConfig_bothPasswords = `
+resource "rabbitmq_user" "test" {
+    name                = "mctest"
+    password            = "foobar"
+    password_wo         = "wo-secret-one"
+    password_wo_version = 1
+    tags                = ["management"]
+}`
+
+const testAccUserConfig_passwordWO_noVersion = `
+resource "rabbitmq_user" "test" {
+    name        = "mctest"
+    password_wo = "wo-secret-one"
+    tags        = ["management"]
+}`
+
 const testAccUserConfig_passwordWO_v1_changedSecret = `
 resource "rabbitmq_user" "test" {
     name                = "mctest"

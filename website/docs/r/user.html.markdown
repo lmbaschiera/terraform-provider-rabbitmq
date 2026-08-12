@@ -55,11 +55,11 @@ The following arguments are supported:
   must be set together with `password_wo_version`. Exactly one of `password` and
   `password_wo` must be set.
 
-  ~> **Note:** Neither password argument may be empty. RabbitMQ does not reject a user
-  that has no password: on creation it stores a random, unusable password hash, and on
-  update it clears the hash entirely, wiping a previously working password. Either way
-  the account can no longer authenticate, so the provider rejects an empty password
-  rather than letting the apply report success.
+  ~> **Note:** Setting either password argument to `""` creates the user without a
+  usable password hash. The internal authentication backend then refuses every password
+  for that user, so authentication falls through to the next backend in RabbitMQ's
+  `auth_backends` chain. This is how you declare a user that must authenticate only via
+  LDAP or an x509 certificate.
 
 * `password_wo_version` - (Optional) An integer that triggers a password update when
   changed. Must be set together with `password_wo`.

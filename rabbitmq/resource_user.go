@@ -180,8 +180,7 @@ func DeleteUser(d *schema.ResourceData, meta any) error {
 }
 
 // userPassword resolves the password to send to RabbitMQ. The schema's ExactlyOneOf
-// guarantees that exactly one of password and password_wo is set in configuration --
-// but "set" includes an explicit empty string, so the resolved value is checked below.
+// guarantees that exactly one of password and password_wo is set in configuration.
 //
 // password_wo is a write-only attribute, so it is never persisted to state and
 // d.Get("password_wo") always returns the zero value. It has to be read back out of
@@ -199,14 +198,11 @@ func userPassword(d *schema.ResourceData) (string, error) {
 		}
 	}
 
-	// UserSettings.Password is `omitempty`, so an empty value is dropped from the
-	// request body. RabbitMQ does not reject that: it stores an unusable password
-	// hash on create, and wipes an existing password on update, in both cases
-	// reporting success. Fail loudly rather than silently locking the user out.
-	if password == "" {
-		return "", fmt.Errorf("password must not be empty")
-	}
-
+	// An empty password is allowed and meaningful: UserSettings.Password is
+	// `omitempty`, so it is dropped from the request body and RabbitMQ stores the
+	// user with no usable password hash. The internal backend then refuses every
+	// password for that user, which is how a user is set up to authenticate through
+	// a later backend in the auth_backends chain (LDAP, x509) instead.
 	return password, nil
 }
 

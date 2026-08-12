@@ -253,18 +253,27 @@ func TestAccUser_passwordWO_rotate(t *testing.T) {
 	})
 }
 
-func TestAccUser_emptyPasswordRejected(t *testing.T) {
+// An empty password is a supported configuration, not a mistake. RabbitMQ stores the
+// user with no usable password hash, so the internal backend refuses every password and
+// authentication falls through to the next backend in the auth_backends chain. That is
+// how users who authenticate only via LDAP or x509 are declared.
+func TestAccUser_emptyPassword(t *testing.T) {
+	var user string
 	resource.Test(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t) },
-		Providers: testAccProviders,
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy(user),
 		Steps: []resource.TestStep{
 			{
-				Config:      testAccUserConfig_emptyPassword,
-				ExpectError: regexp.MustCompile("password must not be empty"),
-			},
-			{
-				Config:      testAccUserConfig_emptyPasswordWO,
-				ExpectError: regexp.MustCompile("password must not be empty"),
+				Config: testAccUserConfig_emptyPassword,
+				Check: resource.ComposeTestCheckFunc(
+					// The user must exist...
+					testAccUserCheck("rabbitmq_user.test", &user),
+					// ...but must not be able to authenticate against the internal
+					// backend, with an empty password or any other.
+					testAccUserCannotConnect("mctest", ""),
+					testAccUserCannotConnect("mctest", "anything"),
+				),
 			},
 		},
 	})
@@ -470,14 +479,6 @@ resource "rabbitmq_user" "test" {
     name     = "mctest"
     password = ""
     tags     = ["management"]
-}`
-
-const testAccUserConfig_emptyPasswordWO = `
-resource "rabbitmq_user" "test" {
-    name                = "mctest"
-    password_wo         = ""
-    password_wo_version = 1
-    tags                = ["management"]
 }`
 
 func TestAccUser_passwordWO_versionUnchanged(t *testing.T) {
